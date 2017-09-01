@@ -816,6 +816,8 @@ static void si4702_init(void)
         and when we can get the seek in.
         
     */
+
+    _delay_ms(2000);
                
     set_shadow_reg(REGISTER_02, _BV( REG_02_ENABLE_BIT ) );    // Enable chip 
 
@@ -823,6 +825,7 @@ static void si4702_init(void)
 
 	si4702_write_registers( REGISTER_02 );
 
+    _delay_ms(2000);
        
 	/*
 	 * Set radio params based on eeprom...
