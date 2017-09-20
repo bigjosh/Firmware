@@ -774,7 +774,7 @@ static void si4702_init(void)
     
     */
 
-	_delay_ms(500);
+	_delay_ms(1);
     
 }
 
@@ -807,6 +807,8 @@ static void si4702_enable(void) {
 	/*
 	 * Set radio params based on eeprom...
 	 */
+    
+    _delay_ms(500);
     
 	set_shadow_reg(REGISTER_04, (eeprom_read_byte(EEPROM_DEEMPHASIS) ? _BV( REG_04_DE_BIT ) : 0x0000));
     
@@ -1095,7 +1097,7 @@ int main(void) {
 	SBI( DDRB , LED_DRIVE_BIT);    // Set LED pin to output, will default to low (LED off) on startup
                                    // Keeps input pin from floating and toggling unnecessarily and wasting power
                                        
-    _delay_ms(50);                 // Debounce the on switch
+    _delay_ms(1);                 // Debounce the on switch
 
     // TODO: Test shutdown current on a new PCB that lets us hold the amp in reset
                                    
