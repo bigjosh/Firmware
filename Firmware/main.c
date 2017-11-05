@@ -696,8 +696,12 @@ static void si4702_init(void)
         step 5.    
     
     */
+    
+    // UPDATE 11-5-2017: Some units powering up with static in production, so increasing this from 500ms to 600ms
+    // and also increasing powerup time in enable from 200ms to 350ms to try and get a margin past the problem.
+    // TODO: Walk this back once problem cured to see if this delay was relevant. 
 
-	_delay_ms(500);
+	_delay_ms(600);
     
 }
 
@@ -776,9 +780,11 @@ static void si4702_enable(void) {
     // This was 110ms as per spec, but caused a minority of units to come up
     // tuned to static. WTF Si?
     // 200ms next guess, seems to cure problem on unit tested. 
+    // UPDATE 11-7-2017:  Maybe 200ms not enough either. Some units in production are still powering up to
+    // static so upping this form 200ms to 350ms, and osc delay from 500ms to 600ms. 
     // TODO: Maybe try polling the chip to see exactly when it wakes up to shorten this?
         
-    _delay_ms(200); 
+    _delay_ms(350); 
     
 }
 
