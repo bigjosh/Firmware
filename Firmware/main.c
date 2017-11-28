@@ -167,7 +167,7 @@
                                                 
 // TODO: Empirically figure out optimal values for low battery voltages
 
-#define BREATH_COUNT (5)       // How many initial breaths should we display? Resets on startup and after each button press. Each breath currently about 2 secs.
+#define LED_COUNT (5)       // How many initial breaths should we display? Resets on startup and after each button press. Each breath currently about 2 secs.
 
 // These are the error display codes
 // When we run into problems, we blink the LED this many times to show the user
@@ -244,157 +244,17 @@ typedef enum {
 #define EEPROM_FACTORY		((const uint8_t *)16)
 
 
-/*
- * Setup Timer 1 to drive the LED using PWM on the OC1B pin (PB4)
- */
-
-// Assumes timer registers are still at reset-default values.
-
-static inline void LED_PWM_init(void)
-{
-    
-    // We are using simple PWM mode to drive OCR1B which is connected to the LED.
-    // We are driving off the system clock, not the PLL
-    // We are using non-inverting mode where OCR is set at 0 and cleared at match, so lower matches are less brightness
-    // Note that if OCR is 0, then there i not pulse generated so LED stays off
-    
-    
-    // We are going to run PWM mode
-    
-    
-	OCR1C = 255;                //  In PWM mode, the Timer counter counts up to the value specified in the output compare register OCR1C and starts again from $00. 
-    
-    // OCR1B=0 here because it is the default startup value
-    
-    GTCCR =     
-        _BV( PWM1B  ) |          // Enable PWM module B
-        _BV( COM1B1 )            // OC1x cleared on compare match. Set when TCNT1 = $00.
-    ;
-    
-    
-	//TCCR1 = _BV( CS12 );        // Enable timer, PCK/8           
-            
-}
-
-
-// Enter with OCR1B already set to desired duty cycle
-
-static inline void LED_PWM_on(void) {
-
-    
-    // We could have saved a write here if the LED was attached to OCR1A instead of B since we could have
-    // disabled the output pin and stopped the timer in a single register
-            
-    TCNT1 =254;                 // Next count will overflow and start a proper cycle based on OCR1B
-                                // If we do not do this, then the output gets set high when we enable the PWM! Undocumented!
-    
-    GTCCR =     
-        _BV( PWM1B  ) |          // Enable PWM module B
-        _BV( COM1B1 ) |          // OC1x cleared on compare match. Set when TCNT1 = $00.
-        _BV( FOC1B )  |          // Force compare match. Because of the output mode bits, this will clear the output.    
-        _BV( PSR1 )              //  Prescaler Reset Timer/Counter1 - start with a clean slate on the precsaller too
-    ;
-    
-    // 1Mhz clock / 256 step cycle / 8 prescaller = 500hkz pwm rate
-    // SHould be fast enough for driving LED without current limiting resistor
-    
-      TCCR1 = _BV( CS12 );        // Enable timer, PCK/8           
-            
+static inline void LED_on(void) {
+   // Very quick blink LED twice
+   SBI( PORTB , LED_DRIVE_BIT );
 }    
 
 
-// Turn off the timer to save power when we sleep. 
-// Assumes the brightness has already been set to zero. 
 
-static inline void LED_PWM_off(void) {
-    
-    /*
-
-        When OCR1A or OCR1B contain $00 or the top value, as specified in OCR1C register, the output PB1(OC1A) or
-        PB4(OC1B) is held low or high according to the settings of COM1A1/COM1A0. This is shown in Table 12-2.
-        In PWM mode, the Timer Overflow Flag - TOV1 is set when the TCNT1 counts to the OCR1C value and the
-        TCNT1 is reset to $00. The Timer Overflow Interrupt1 is executed when TOV1 is set provided that Timer Overflow
-        Interrupt and global interrupts are enabled. This also applies to the Timer Output Compare flags and interrupts.
-        The frequency of the PWM will be Timer Clock 1 Frequency divided by (OCR1C value + 1). See the following
-        equation:
-        Resolution shows how many bits are required to express the value in the OCR1C register and can be calculated
-        using the following equation:
-        Table 12-2. PWM Outputs OCR1x = $00 or OCR1C, x = A or B
-        COM1x1 COM1x0 OCR1x Output OC1x Output OC1x
-        0 1 $00 L H    
-    
-    */
-    
-    // So, if the OCR is set to 0, then the LED should be off no matter what...    
-
-    // Disable the PWM, disconnect the pin (will be driven by PORT which should be low)
-
-    GTCCR = 0;                  // Disconnect output pin. 
-    TCCR1 = 0;                  // Stop the clock. Save some power.
-                
-    // Note that we don't bother to disable the clock when LED is off because it will stop in sleep shutdown mode anyway
-        
+static inline void LED_off(void) {
+   CBI( PORTB , LED_DRIVE_BIT );        
 }  
 
-static uint8_t currentLEDBrightness=0;
-
-#define MIN(a,b) (((a)<(b))?(a):(b))
-
-// 0=off, 255-brightest. Normalized for voltage.   
-
-static void setLEDBrightness( uint8_t newBrightness ) {   
-     
-    OCR1B = MIN((newBrightness)/16,8);            //TODO:this is a hack, fix the lookup table to have correct values
-    
-    //OCR1B = newBrightness;            //TODO:this is a hack, fix the lookup table to have correct values
-        
-    if ( newBrightness ) {              // faster to always blindly enable rather than test previous value
-        LED_PWM_on();                   // Also forces the new brightness to take effect immediately - although not visible to human eye
-    } else  {
-        LED_PWM_off();                  // Turn off timer when LED off to save power
-    }
-    
-    currentLEDBrightness = newBrightness;
-                
-}    
-
-
-// Breath data thanks to Lady Ada
-
-// MUST end with 0 brightness or else LED will stay on during sleep and kill battery.
-// If you want to change to a pattern that does not end at 0, then add a line to manually set brightness to zero 
-// when existing breathe mode.
-
-
-
-const PROGMEM uint8_t breath_data[] =  {
-        
- 0, 1, 1, 2, 3, 5, 8, 11, 15, 20, 25, 30, 36, 43, 49, 56, 64, 72, 80, 88, 97, 105, 114, 123, 132, 141, 150, 158, 167, 175
-    
-};
-
-
-#define BREATH_CYCLE_LEN ((sizeof( breath_data) / sizeof( *breath_data )) * 2)      // *2 because we walk the values up and then back down
-
-
-static uint8_t breath(uint8_t step) {
-    
-  uint8_t lookup;         // Map  steps to 1/2 as many lookups (pattern is symmetric around center)
-  
-  if (step<(BREATH_CYCLE_LEN/2)) {
-      
-      lookup = step;
-      
-   } else {
-       
-       lookup = (BREATH_CYCLE_LEN-1) -  step ;
-      
-  }      
-
-  uint8_t brightness = pgm_read_byte_near( breath_data + lookup );
-  return brightness;
-  
-}
 
 static uint8_t shadow[32];
 
@@ -851,9 +711,9 @@ Old tunedirect()
 // Blink  1 second
 
 static void longBlink(void) {
-    setLEDBrightness(255);
+    LED_on();
     _delay_ms(1000);
-    setLEDBrightness(0);
+    LED_off();
 }    
 
 // Returns true if button is down
@@ -916,7 +776,7 @@ static uint8_t initButton(void)
 
 static void handleButtonDown(void) {
     
-    setLEDBrightness(0);                    // Led off when button goes down. Gives feedback if we are currently breathing otherwise benign
+    LED_off();                    // Led off when button goes down. Gives feedback if we are currently breathing otherwise benign
     
     _delay_ms( BUTTON_DEBOUNCE_MS );        // Debounce down
         
@@ -942,13 +802,13 @@ static void handleButtonDown(void) {
 
         // User feedback of long press with long flash on LED
         
-        setLEDBrightness(255);        
+        LED_on();        
                             
         updateToCurrentChannel();      // TODO: This no longer works with seek rather than step.
                       
         _delay_ms(500);
 
-        setLEDBrightness(0);            
+        LED_off();            
                 
                 
         while (buttonDown());           // Wait for them to finally release the button- hopefully after seeing the confirmation long blink
@@ -978,9 +838,9 @@ static void badEEPROMBlink(void) {
     while (blinkCountDown-- ) {          // Still blinking? Also, a button press will abort the blink cycle
 
         for( uint8_t c=3; c ; c--) {                // 3 blinks
-            setLEDBrightness(255); 
+            LED_on(); 
             sleepFor( HOWLONG_16MS);
-            setLEDBrightness(0);
+            LED_off();
             sleepFor( HOWLONG_500MS );                // Space between blinks
         }        
         
@@ -1007,7 +867,7 @@ static void badEEPROMBlink(void) {
 
 static void lowBatteryShutdown(void) {
     
-    setLEDBrightness(0);        // Turn off PWM, we will directly drive the LED from the pin output
+    LED_off();        // Turn off PWM, we will directly drive the LED from the pin output
     
     
     // Shutdown all peripherals so save power in deep sleep
@@ -1119,9 +979,9 @@ static void debugBlinkDigit(uint8_t c) {
     
     while (c--) {
         
-        setLEDBrightness(255);
+        LED_on();
         _delay_ms(200);
-        setLEDBrightness(0);
+        LED_off();
         _delay_ms(200);
     }
     
@@ -1187,21 +1047,16 @@ void run(void) {
         
     // Radio is now on and tuned
     
-    uint8_t breathCountdown = BREATH_COUNT;         // Count down breaths displayed. When this gets to 0, stop showing breath unitl a button push resets count
-
-    uint8_t fadecycle = BREATH_CYCLE_LEN;           // Where in the breath cycle are we now
+    uint8_t ledCountdown = LED_COUNT;         // Count down how long LED is displayed. When this gets to 0, stop showing LED until a button push resets count
     
-    uint8_t warm_low_count=0;                       // How many times in a row has the warm voltage been too low?
+    uint8_t warm_low_count=0;                    // How many times in a row has the warm voltage been too low?
     
     while (1) {
         
-        // This loop cycles every 20ms when we are in breathing LED mode
-        // Thereafter it only cycles once every 8 seconds and the CPU deep sleeps between cycles.
-        
+        // This loop cycles every second 
+                
         // Constantly check battery and shutdown if low
-        
-        //debugBlinkVoltage();
-        
+                
         if  (VCC_LESS_THAN( LOW_BATTERY_VOLTAGE_WARM )) {
             
             warm_low_count++;
@@ -1216,7 +1071,7 @@ void run(void) {
                                                
                 adc_off();
                 
-                setLEDBrightness(0);        // Turn off LED PWM
+                LED_off();        // Turn off LED PWM
                 
                 lowBatteryShutdown();
                 
@@ -1239,43 +1094,36 @@ void run(void) {
             
             handleButtonDown();
             
-            // Every time the button is pressed we start the breath cycle over
+            // Every time the button is pressed we start the LED light countdown over
             
-            breathCountdown = BREATH_COUNT;
+            ledCountdown = LED_COUNT;
 
-            fadecycle =BREATH_CYCLE_LEN;
             
         }
         
         
-        // Breathe for a while so user knows we are alive in case not tuned to a good station or volume too low
+        // Light LED so user knows we are alive in case not tuned to a good station or volume too low
         // Each pass though the while loop in this stage takes about 20ms
 
         
-        if (breathCountdown) {
+        if (ledCountdown) {
             
-            fadecycle--;
+            LED_on();               // Blindly turn on even though might already be on becuase it takes longer to check than do
+                        
+            ledCountdown--;
             
-            setLEDBrightness( breath(fadecycle)  );
-            
-            _delay_ms(20);  // Empirical delay here lets this brightrness actuall go though a PWM cycle and be visible on the LED
-            // Can't sleep here because that would halt the timer that is PWMing the LED
-            
-            if (!fadecycle) {
+            if (!ledCountdown) {
                 
-                fadecycle=BREATH_CYCLE_LEN;
+                LED_off();
                 
-                breathCountdown--;
-                
-            }
+            }  
             
-        } else {        // We are past the initial breathing period
+        }               
             
-            sleepFor( HOWLONG_1S );      // Do nothing for a while before checking low battery again (will wake instantly on button press) to save power
-            // We actually do not need to check the battery this often, this is just the longest the watchdog timer can sleep for
-            // The CPU only used a few microamps for this 8 seconds, which shoudl help extend battery life.
+        sleepFor( HOWLONG_1S );      // Do nothing for a while before checking low battery again (will wake instantly on button press) to save power
+        // We actually do not need to check the battery this often, this is just the longest the watchdog timer can sleep for
+        // The CPU only used a few microamps for this 8 seconds, which should help extend battery life.
             
-        }
                 
     }
 }    
@@ -1294,9 +1142,7 @@ int main(void) {
     _delay_ms(50);                 // Debounce the on switch
         
     // TODO: Test shutdown current on a new PCB that lets us hold the amp in reset
-                                   
-    LED_PWM_init();                // Set up the PWM so we can use the LED. Note that the timer does not actually get started until we set the brightness.                                   
-                                                                                         
+                                                                                                                            
     if (initButton()) {             // Was button down on startup?
                 
         // TODO: How should this work?
