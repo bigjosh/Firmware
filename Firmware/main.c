@@ -178,7 +178,6 @@
 
 #define DIAGNOSTIC_BLINK_TIMEOUT_S   120            // Show diagnostic blink at least this long before going to sleep
                                                     // Give user time to see it, but don't go too long because we will
-
                                                     // make crusty batteries. Must fit in unit8_t.
 
 #define SBI(port,bit) (port|=_BV(bit))
@@ -197,8 +196,7 @@ typedef enum {
 	REGISTER_08 = 28,
 	REGISTER_09 = 30,
 	REGISTER_0A =  0,
-	REGISTER_0B =  2,
-    
+	REGISTER_0B =  2,    
 
     // These not used in current implementation. 
 	REGISTER_0C =  4,
@@ -277,7 +275,7 @@ static inline void set_shadow_reg_non_macro(si4702_register reg, uint16_t value)
 
 // Read registers 0x0a and 0x0b from FM_IC.
 // We really only care about 0x0b because this is where the current channel is saved after a seek.
-// We have to read both because all TWO reads on this chip start at register 0x0a (they wraps around to at 0x0f) 
+// We have to read both because all TWI reads on this chip start at register 0x0a (they wrap around at 0x0f) 
 // We need 0x03 so we can check what station we landed on after a seek.
 
 static void si4702_read_registers_upto_0B(void)

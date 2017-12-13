@@ -184,8 +184,8 @@ static unsigned char USI_TWI_Read_Byte(void) {
 
 
 
-// WriteFlag=0 leaves in read mode
-// WriteFlag=1 leaves in write mode
+// readFlag=1 leaves in read mode
+// readFlag=0 leaves in write mode
 // Returns 0 on success, 1 if no ACK bit received.
 // Assumes bus idle on entry (SCL and SDA high) 
 // Returns with SCL low
@@ -218,7 +218,6 @@ static unsigned char USI_TWI_Start( unsigned char addr , unsigned char readFlag)
     return USI_TWI_Write_Byte( controlword );
         
 }    
-
 
 // Write the bytes pointed to by buffer
 // addr is the chip bus address
