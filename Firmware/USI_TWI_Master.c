@@ -35,12 +35,11 @@
 #include "USI_TWI_Master.h"
 #include <util/delay.h>
 
-#define BIT_TIME_US     (5)          // How long should should we wait between bit transitions?
+#define BIT_TIME_US     (20)          // How long should should we wait between bit transitions?
 
 #define SBI(port,bit) (port|=_BV(bit))
 #define CBI(port,bit) (port&=~_BV(bit))
 #define TBI(port,bit) (port&_BV(bit))
-
 
 // These are open collector signals, so never drive high - only drive low or pull high
 
@@ -82,15 +81,12 @@ void USI_TWI_Master_Initialise( void )
   // This leaves us with both SCL and SDA high, which is an idle state  
 }
 
-
 // Write a byte out to the slave and look for ACK bit
 // Assumes SCL low, SDA doesn't matter
 
 // Returns 0=success, SDA high, SCL low. The ACK bit is still on SDA but will disapear on next SCL falling edge
 
 static unsigned char USI_TWI_Write_Byte( unsigned char data ) {
-    
-    
     
     for( uint8_t bitMask=0b10000000; bitMask !=0; bitMask>>=1 ) {
         
@@ -133,59 +129,6 @@ static unsigned char USI_TWI_Write_Byte( unsigned char data ) {
         
 }
 
-// Read a byte from the slave and send ACK bit
-// Assumes SCL low, returns with SCL low
-// Assumed SDA pulled high
-
-// Returns byte read, SDA high, SCL high
-
-static unsigned char USI_TWI_Read_Byte(void) {
-          
-    unsigned char data=0;
-    
-    for( uint8_t bitMask=0b10000000; bitMask !=0; bitMask>>=1 ) {
-        
-        // Clock in the address bits
-        
-        // TODO: Finish this
-                                
-        scl_pull_high();           // Clock in the next address bit
-        
-        _delay_us(BIT_TIME_US);
-        
-        if (sda_read()) {
-            
-            data |= bitMask;
-            
-        }            
-        
-        scl_drive_low();
-        
-        _delay_us(BIT_TIME_US);
-                                        
-    }      
-    
-    // SCLK low here
-    
-    //After each byte of data is read,
-    //the controller IC must drive an acknowledge (SDIO = 0)
-    //if an additional byte of data will be requested. Data
-    //transfer ends with the STOP condition.         
-
-    sda_drive_low();            // drive SDA low to ACK that we read the byte
-    _delay_us(BIT_TIME_US);     // Not needed, but so we can see what is happening on the scope       
-    scl_pull_high();            // Clock out the ACK bit    
-    _delay_us(BIT_TIME_US);
-    scl_drive_low();
-    sda_pull_high();            // Back to normal condition pulling SDA high  
-    _delay_us(BIT_TIME_US);
-    
-    return(data);            
-         
-}
-
-
-
 // readFlag=1 leaves in read mode
 // readFlag=0 leaves in write mode
 // Returns 0 on success, 1 if no ACK bit received.
@@ -222,15 +165,17 @@ static unsigned char USI_TWI_Start( unsigned char addr , unsigned char readFlag)
 
 // Assumes on entry SCL low and SDA high
 // Returns with bus idle, SCL high SDA high 
-// Returns with SCL low
+
 
 static void USI_TWI_Stop(void) {
 
     // Data transfer ends with the STOP condition
     // (rising edge of SDIO while SCLK is high).
     
-    // TODO: Is this Really needed? Can we just do repeat starts and save this code? Spec is vague if address is reset on start.
-
+    // Q: Is this Really needed? Can we just do repeat starts and save this code? Spec is vague if address is reset on start.
+    // A: Yes, we need this because it is possible that the FM_IC is holding the SDA line low
+    // wait for us to clock out the MSB of the next byte!
+    
     sda_drive_low();
     _delay_us(BIT_TIME_US);     // Give is a moment to stabilize in case 
     scl_pull_high();
@@ -251,6 +196,8 @@ unsigned char USI_TWI_Write_Data(unsigned char addr, const uint8_t *buffer , uin
         
     USI_TWI_Start( addr , 0 );      // TODO: check for error
     
+    // Note here we can't really break out readByte() becuase the last byte
+    // is special since we do not ACK it but instead send a STOP.
     
     while (count--) {
         
@@ -279,18 +226,101 @@ unsigned char USI_TWI_Read_Data(unsigned char addr, uint8_t *buffer , uint8_t co
 {
     
     USI_TWI_Start( addr , 1 );      // TODO: check for error
+
+                
+    while (count) {
+        
+        unsigned char data=0;
     
-    while (count--) {
+        for( uint8_t bitMask=0b10000000; bitMask !=0; bitMask>>=1 ) {
         
-        *buffer = USI_TWI_Read_Byte();
+            // Clock in the data bits
+            
+            scl_pull_high();           // Clock in the first data bit
+            
+            _delay_us(BIT_TIME_US);            
+     
+            if (sda_read()) {
+            
+                data |= bitMask;
+            
+            }            
         
-        buffer++;
-        
-    }
-        
-    // TODO: Is this Really needed? Can we just do repeat starts and save this code? Spec is vague if address is reset on start. 
+            scl_drive_low();
+            
+            _delay_us(BIT_TIME_US);
+                                                                    
+        }      
     
-   USI_TWI_Stop();
+        // SCLK low here
+        // SDA should be pulled high and not driven low by the FMIC because 
+        // we are reading so it is out turn to ACK now
+        
+        *buffer = data;
+        
+        buffer++;      
+        
+        count--;               
+                        
+        if (count) {
+        
+            //After each byte of data is read,
+            //the controller IC must drive an acknowledge (SDIO = 0)
+            //if an additional byte of data will be requested. Data
+            //transfer ends with the STOP condition.         
+
+            sda_drive_low();            // drive SDA to ACK that we read the byte
+            _delay_us(BIT_TIME_US);     // Not needed, but so we can see what is happening on the scope
+
+        
+            scl_pull_high();            // Clock out the ACK bit
+            _delay_us(BIT_TIME_US);
+
+            scl_drive_low();        
+            _delay_us(BIT_TIME_US);     // Not necessary
+            sda_pull_high();            // Back to normal condition pulling SDA high (slave will have next data bit on bus now)
+            _delay_us(BIT_TIME_US);
+            
+            // Ready for next bit..
+            
+        }            
+    }    
+    
+    // Ok, we got all the bits we need. 
+    // We did not send a ACK on the last byte, so 
+    // SCL is still low from the final data bit. 
+    // SDA is pulled high because the slave is waiting for use to drive low to ACK (we will STOP instead)
+    
+    /* 
+        FROM TI: 
+    
+        "Once the master has received the number of bytes it is expecting, it
+        will send a NACK, signaling to the slave to halt communications and release the bus. The master will
+        follow this up with a STOP condition."
+        
+        https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwj9mr_HuobYAhVJON8KHfV0CeMQFggoMAA&url=http%3A%2F%2Fwww.ti.com%2Flit%2Fan%2Fslva704%2Fslva704.pdf&usg=AOvVaw0MO8lWY9iHs3PZqsN6fgWm
+                
+        From FM_IC Daata sheet:
+        
+        "After each byte of data is read,
+        the controller IC must drive an acknowledge (SDIO = 0)
+        if an additional byte of data will be requested. Data
+        transfer ends with the STOP condition. After every
+        STOP condition, the internal address counter is reset."
+        
+        This actually makes sense if you consider the case where the high bit in the
+        next data byte being read is a 0. In this case, the FM_IC will hold the SDA line LOW
+        after the ACK bit is clocked, making it impossible to send the stop condition.
+        
+        This actually happened in the wild when issuing a WRITE to do a seek after issuing a
+        RED to get he the currently tuned station for a save. 
+                
+    */
+
+    scl_pull_high();            // SDA is is high, so we are clocking out a NAK
+    _delay_us(BIT_TIME_US);        
+    
+    USI_TWI_Stop();
    
     // End transaction with bus in idle
     

@@ -289,7 +289,7 @@ static void si4702_read_registers_upto_0B(void)
 
 // Writes registers starting at 0x02 up to and including the specified upto_reg (max 0x09) 
 // No reason to overwrite registers that we have not changed - especially 0x07 which has conflicting
-// documentation about what to write there after powerup. Better to leave it be!
+// documentation about what to write there after power up. Better to leave it be!
 
 static void si4702_write_registers(unsigned upto_reg)
 {
@@ -309,9 +309,6 @@ static void si4702_write_registers(unsigned upto_reg)
 #define	SEEK_RSSI_THRESHOLD	(10)
 #define	SEEK_SNR_THRESHOLD	(2)
 #define SEEK_IMPULSE_THRESHOLD	(4)
-
-
-
 
 /*
  * update_channel() -	Update the channel stored in the working params.
@@ -393,18 +390,15 @@ static void seekNext(void) {
     // Empirically determined that we need this delay.
     // We we follow the stop with a start immediately, it does not work. 
     // 1ms was the 1st guess and it worked. 
-   
-    
-    _delay_ms(1);
-                
+       
+    _delay_ms(1);                
             
     // Set "SEEK" bit on - begins the seek
             
     set_shadow_reg(REGISTER_02, REG_02_DEFAULT | _BV(REG_02__SEEK) );            
     
     si4702_write_registers( REGISTER_02 );
-                
-    
+                    
 }    
 
 
