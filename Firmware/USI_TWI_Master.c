@@ -118,7 +118,7 @@ static unsigned char USI_TWI_Write_Byte( unsigned char data ) {
     // The device acknowledges the address by driving SDIO
     // low after the next falling SCLK edge, for 1 cycle. 
         
-    sda_pull_high();            // Pull SDA high so we can see if the salve is driving low
+    sda_pull_high();            // Pull SDA high so we can see if the slave is driving low
     _delay_us(BIT_TIME_US);     // Not needed, but so we can see what is happening on the scope
     scl_pull_high();
     _delay_us(BIT_TIME_US);     // TODO: Don't need all these delays
@@ -137,7 +137,7 @@ static unsigned char USI_TWI_Write_Byte( unsigned char data ) {
 // Assumes SCL low, returns with SCL low
 // Assumed SDA pulled high
 
-// Returns 0=success, SDA high, SCL high
+// Returns byte read, SDA high, SCL high
 
 static unsigned char USI_TWI_Read_Byte(void) {
           
@@ -165,17 +165,19 @@ static unsigned char USI_TWI_Read_Byte(void) {
                                         
     }      
     
+    // SCLK low here
+    
     //After each byte of data is read,
     //the controller IC must drive an acknowledge (SDIO = 0)
     //if an additional byte of data will be requested. Data
     //transfer ends with the STOP condition.         
 
-    sda_drive_low();            // Pull SDA high so we can see if the salve is driving low
+    sda_drive_low();            // drive SDA low to ACK that we read the byte
     _delay_us(BIT_TIME_US);     // Not needed, but so we can see what is happening on the scope       
     scl_pull_high();            // Clock out the ACK bit    
     _delay_us(BIT_TIME_US);
     scl_drive_low();
-    sda_pull_high();    
+    sda_pull_high();            // Back to normal condition pulling SDA high  
     _delay_us(BIT_TIME_US);
     
     return(data);            
@@ -204,8 +206,7 @@ static unsigned char USI_TWI_Start( unsigned char addr , unsigned char readFlag)
     _delay_us(BIT_TIME_US);
     
     scl_drive_low();
-        
-                
+                        
     // A START condition is always followed by the (unique) 7-bit slave address (MSB first) and then w/r bit
         
     // The control word is latched internally on
@@ -217,6 +218,27 @@ static unsigned char USI_TWI_Start( unsigned char addr , unsigned char readFlag)
     
     return USI_TWI_Write_Byte( controlword );
         
+}    
+
+// Assumes on entry SCL low and SDA high
+// Returns with bus idle, SCL high SDA high 
+// Returns with SCL low
+
+static void USI_TWI_Stop(void) {
+
+    // Data transfer ends with the STOP condition
+    // (rising edge of SDIO while SCLK is high).
+    
+    // TODO: Is this Really needed? Can we just do repeat starts and save this code? Spec is vague if address is reset on start.
+
+    sda_drive_low();
+    _delay_us(BIT_TIME_US);     // Give is a moment to stabilize in case 
+    scl_pull_high();
+    _delay_us(BIT_TIME_US);
+   
+    sda_pull_high();
+    _delay_us(BIT_TIME_US);
+ 
 }    
 
 // Write the bytes pointed to by buffer
@@ -238,19 +260,10 @@ unsigned char USI_TWI_Write_Data(unsigned char addr, const uint8_t *buffer , uin
         
     }
     
-    // Data transfer ends with the STOP condition 
-    // (rising edge of SDIO while SCLK is high). 
-    
-    // TODO: Is this Really needed? Can we just do repeat starts and save this code? Spec is vague if address is reset on start. 
-    
-    sda_drive_low();
-    scl_pull_high();
-    _delay_us(BIT_TIME_US);
-    
-    sda_pull_high();
-    _delay_us(BIT_TIME_US);
         
     // End transaction with bus in idle
+    
+    USI_TWI_Stop();
     
     return(0);
     
@@ -274,20 +287,11 @@ unsigned char USI_TWI_Read_Data(unsigned char addr, uint8_t *buffer , uint8_t co
         buffer++;
         
     }
-    
-    // Data transfer ends with the STOP condition 
-    // (rising edge of SDIO while SCLK is high). 
-    
-    // TODO: Is this Really needed? Can we just do repeat starts and save this code? Spec is vague if address is reset on start. 
-    // TODO: Make stop function to save space
-    
-    sda_drive_low();
-    scl_pull_high();
-    _delay_us(BIT_TIME_US);
-    
-    sda_pull_high();
-    _delay_us(BIT_TIME_US);
         
+    // TODO: Is this Really needed? Can we just do repeat starts and save this code? Spec is vague if address is reset on start. 
+    
+   USI_TWI_Stop();
+   
     // End transaction with bus in idle
     
     return(0);
